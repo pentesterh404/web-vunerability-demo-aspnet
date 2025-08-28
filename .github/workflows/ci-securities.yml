@@ -1,0 +1,48 @@
+name: CI Security Pipeline
+
+on: [push, pull_request]
+
+jobs:
+  build-test-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+    # 1. Checkout source
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    # 2. Static Application Security Testing (SAST) bằng Semgrep
+    - name: Run SAST (Semgrep)
+      uses: returntocorp/semgrep-action@v1
+      with:
+        config: "p/owasp-top-ten"
+
+    # 3. Software Composition Analysis (SCA) bằng OWASP Dependency-Check
+    - name: Run SCA (Dependency Check)
+      uses: dependency-check/Dependency-Check_Action@main
+      with:
+        project: "demo-app"
+        format: "HTML"
+        out: "reports"
+
+    # 4. Build Docker image (ứng dụng của bạn phải có Dockerfile)
+    - name: Build Docker Image
+      run: docker build -t demo-app .
+
+    # 5. Container Scan bằng Trivy
+    - name: Run Container Scan (Trivy)
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: "demo-app:latest"
+        format: "table"
+        exit-code: "1" # sẽ fail job nếu có lỗ hổng nghiêm trọng
+        vuln-type: "os,library"
+
+    # 6. Dynamic Application Security Testing (DAST) bằng OWASP ZAP
+    - name: Start App (Docker)
+      run: docker run -d -p 8080:80 demo-app
+
+    - name: Run DAST (OWASP ZAP Baseline)
+      uses: zaproxy/action-baseline@v0.6.0
+      with:
+        target: "http://localhost:8080"
